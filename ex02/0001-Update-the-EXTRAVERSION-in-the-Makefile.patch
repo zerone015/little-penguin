@@ -1,0 +1,29 @@
+From 3b8c2cfc3c2eb22b392387d27383ecbd69dd93b2 Mon Sep 17 00:00:00 2001
+From: yoson <yoson@student.42seoul.kr>
+Date: Fri, 14 Feb 2025 05:18:27 +0900
+Subject: [PATCH] Update the EXTRAVERSION in the Makefile.
+
+I modified the EXTRAVERSION variable in the Makefile.
+I added "-thor_kernel" as required by the subject.
+
+Signed-off-by: yoson <yoson@student.42seoul.kr>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 89628e354ca7..c71383a8baa7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@
+ VERSION = 6
+ PATCHLEVEL = 14
+ SUBLEVEL = 0
+-EXTRAVERSION = -rc2
++EXTRAVERSION = -rc2-thor_kernel
+ NAME = Baby Opossum Posse
+ 
+ # *DOCUMENTATION*
+-- 
+2.20.1
+
