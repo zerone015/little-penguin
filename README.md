@@ -161,3 +161,59 @@ git format-patch -1
 ```
 
 ## ex03
+이 단계의 목표는 리눅스 커널 코딩 스타일을 숙지하고, 실제 커널 코드에 적용해보는 것이다.
+
+#### 요구 사항
+아래의 주어진 C 파일을 리눅스 코딩 규칙에 맞게 수정해야 한다.
+```c
+#include
+#include
+#include
+#include
+
+int do_work(int *my_int, int retval) {
+    int x;
+    int y = *my_int;
+    int z;
+
+    for (x = 0; x < my_int; ++x)
+    {
+        udelay(10);
+    }
+
+    if (y < 10)
+        /* That was a long sleep, tell userspace about it */
+        pr_info("We slept a long time!");
+
+    z = x * y;
+    return z;
+
+    return 1;
+}
+
+int my_init(void)
+{
+    int x = 10;
+    x = do_work(&x, x);
+    return x;
+}
+
+void my_exit(void)
+{
+}
+
+module_init(my_init);
+module_exit(my_exit);
+```
+
+#### 제출물
+- 수정된 C 파일
+
+#### 구현 내용
+리눅스 코딩 스타일 문서를 참고하여 코드 형식을 수정하면 된다.   
+수정 후에는 리눅스 소스 트리에서 아래 명령으로 스타일 위반 여부를 확인할 수 있다.
+```bash
+./scripts/checkpatch.pl --no-tree --file <source file>
+```
+
+## ex04
