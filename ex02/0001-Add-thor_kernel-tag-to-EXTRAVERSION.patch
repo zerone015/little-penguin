@@ -1,0 +1,26 @@
+From c7214cb4789bd3ef4058b8aaaf9f97aec900861d Mon Sep 17 00:00:00 2001
+From: yoson <yoson5375@gmail.com>
+Date: Sun, 2 Nov 2025 16:52:48 +0900
+Subject: [PATCH] Add thor_kernel tag to EXTRAVERSION
+
+Signed-off-by: yoson <yoson5375@gmail.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index b34a1f4c0396..25a21b6942a8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@
+ VERSION = 6
+ PATCHLEVEL = 18
+ SUBLEVEL = 0
+-EXTRAVERSION = -rc3
++EXTRAVERSION = -rc3-thor_kernel
+ NAME = Baby Opossum Posse
+ 
+ # *DOCUMENTATION*
+-- 
+2.50.1
+
