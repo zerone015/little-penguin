@@ -126,3 +126,38 @@ pr_info(), pr_warn() 등의 매크로도 존재하지만 비교적 최근에 도
 - linux kernel source tree  
  
  ## ex02
+이 단계의 목표는 커널 버전 문자열이 구성되는 방식을 이해하고,   
+Linux 커널에 패치를 제출하는 절차를 익히는 것이다.
+
+#### 요구 사항
+커널 소스 트리 최상위 Makefile에서 EXTRAVERSION 값에 -thor_kernel를 추가한 뒤,   
+커널을 재빌드하고 재부팅하여 uname -r 출력에 해당 문자열이 포함되는지 확인해야 한다.   
+
+#### 제출물
+- 커널 부팅 로그
+- Makefile 수정 패치 파일   
+  (Linux 제출 표준 준수: Documentation/SubmittingPatches 참고)
+
+#### 구현 내용
+이미 커널 소스와 구성 환경이 준비되어 있다면, 이번 과제는 Makefile의 단 한 줄만 수정하면 된다.   
+Linux 커널 최상단 Makefile에는 다음과 같은 버전 정의가 포함된다.   
+```Makefile
+VERSION = 6
+PATCHLEVEL = 8
+SUBLEVEL = 0
+EXTRAVERSION =
+```
+여기서 EXTRAVERSION 값을 다음과 같이 변경한다.   
+```Makefile
+EXTRAVERSION = -thor_kernel
+```
+EXTRAVERSION은 리눅스 업스트림 릴리즈 관리(-rc1, -rc2 등)에 사용되는 전통적인 필드이다.  
+
+패치 파일은 다음 명령으로 생성한다.   
+```bash
+git add Makefile
+git commit -s -m "Add thor_kernel tag to EXTRAVERSION"
+git format-patch -1
+```
+
+## ex03
