@@ -214,3 +214,72 @@ module_exit(my_exit);
 ```
 
 ## ex04
+이 단계의 목표는 USB 키보드가 연결될 때 커널 모듈이 자동으로 로드되도록 구성하고,   
+udev 기반의 동적 장치 관리 방식을 이해하는 것이다.
+
+#### 요구 사항
+ex01에서 작성한 커널 모듈을 수정하여 USB 키보드 연결 시 자동으로 로드되도록 설정해야 한다.   
+
+#### 제출물
+- 소스 코드
+- udev 규칙 파일
+
+#### 구현 내용
+ex01에서는 insmod 명령을 사용해 모듈을 직접 로드했다.   
+이번 단계에서는 USB 키보드가 연결되면 모듈이 자동으로 로드되도록 해야 한다.   
+이를 위해 udev 규칙 파일을 작성하고 시스템의 hotplug 이벤트 처리 흐름을 이해해야 한다.   
+
+#### udev
+udevd는 커널 장치 이벤트(uevent)를 수신하여   
+사용자 정의 정책을 실행하는 사용자 공간 데몬이다.   
+
+리눅스에서 장치 파일(/dev/*)을 통해 하드웨어에 접근해야 하는데,   
+초기에는 /dev 아래에 가능한 모든 장치 파일이 정적으로 생성되었다(devfs).   
+이 방식은 다음과 같은 문제를 초래했다.   
+
+- 실제 없는 장치 파일이 과도하게 생성됨
+- 시스템 관리자가 장치 이름을 제어할 수 없음
+
+이를 개선하기 위해 sysfs(/sys)가 도입되었고, 커널은 장치 정보를 sysfs에 노출한다.  
+udevd는 이 정보를 기반으로 장치 이벤트를 처리하며 장치 파일을 동적으로 생성 및 관리한다.   
+
+#### udev 동작 방식
+1. 부팅 시 udevd 시작
+2. /etc/udev/rules.d/의 규칙 파일들을 파싱해 메모리에 저장
+3. 커널이 장치를 감지하면 sysfs에 장치 정보 생성
+4. 커널이 uevent를 netlink로 udevd에 전달
+5. udevd가 규칙과 비교하여 정책 실행
+   - 장치 파일 생성 / 권한 설정
+   - 심볼릭 링크 생성
+   - 사용자 프로그램 실행
+   - 모듈 적재
+
+규칙 파일은 사전순으로 실행되며 자세한 내용은 man udev에서 확인할 수 있다.   
+
+현재는 /dev가 devtmpfs로 마운트되어 커널이 기본 장치 노드를 자동 생성하고,   
+udev가 여기에 사용자 정책을 적용한다.
+
+#### coldplugging
+udevd가 실행되기 전에 감지된 장치 이벤트는 손실될 수 있다.   
+그래서 udevd가 시작된 뒤 커널은 /sys의 모든 장치에 대해 uevent를 다시 발생시킨다.
+
+#### insmod vs modprobe
+insmod는 지정한 .ko 파일을 직접 커널에 적재한다.   
+파일 경로가 필요하며, 의존성이 있는 모듈을 자동으로 로드하지 않는다.   
+
+반면 modprobe는 모듈 이름(또는 alias)을 기반으로 로드하며, 의존 모듈을 함께 로드한다.   
+
+커널은 장치를 감지하면 해당 장치 정보를 기반으로 MODALIAS 문자열을 생성하고 uevent에 포함시킨다.   
+udev는 이를 받으면 다음과 같이 모듈을 자동 로드한다.
+```bash
+modprobe $MODALIAS
+```
+
+이를 위해 드라이버는 MODULE_DEVICE_TABLE()을 통해   
+지원 장치 정보를 커널에 등록해야 하며, 이후 depmod -a를 통해   
+alias 정보가 /lib/modules/.../modules.alias에 반영된다.
+
+#### 참고 자료
+- [Hotplugging with udev](https://bootlin.com/doc/legacy/udev/udev.pdf)
+- [Overview of Device and Module Handling](https://www.linuxfromscratch.org/lfs/view/stable/chapter09/udev.html)
+- [Linux Device Drivers, 3rd Edition, Chapter 14](https://lwn.net/Kernel/LDD3/)
