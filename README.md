@@ -324,8 +324,7 @@ ex01에서 작성한 커널 모듈을 수정하여 misc 디바이스 드라이�
 - 소스 코드
 
 #### 구현 내용
-리눅스 커널의 장치 드라이버는 하드웨어 장치를 제어하기 위한 인터페이스로,   
-데이터 처리 방식에 따라 세 가지로 나뉜다.
+장치 드라이버는 하드웨어 장치를 제어하기 위한 인터페이스로, 데이터 처리 방식에 따라 세 가지로 나뉜다.
 
 | 구분 | 데이터 단위 | 접근 방식 | 대표 장치 | 비고 |
 |------|--------------|------------|-------------|------|
@@ -333,13 +332,17 @@ ex01에서 작성한 커널 모듈을 수정하여 misc 디바이스 드라이�
 | 블록 드라이버 | 블록 단위 | 임의 접근 | 하드디스크, SSD 등 | /dev/sda, /dev/loop0 등 |
 | 네트워크 드라이버 | 프레임 단위 | 패킷 기반 | NIC, 무선랜 카드 등 | eth0, wlan0 등 |
 
-Misc 드라이버는 문자 디바이스의 일종이지만,   
+misc 드라이버는 문자 디바이스의 일종이지만,   
 메이저 번호가 항상 10번으로 고정되어 있고 등록 절차가 간단하다는 점이 특징이다.   
 테스트용이나 단순한 장치를 빠르게 구현할 때 자주 사용된다.
 
+또한 misc 드라이버는 동적 마이너 번호를 간단히 할당받을 수 있다는 장점이 있다.   
+miscdevice 구조체의 minor 필드에 MISC_DYNAMIC_MINOR를 지정하면 커널이 사용 가능한 번호를 자동으로 배정한다.   
+이 매크로는 255로 정의되어 있으며, 직접 번호를 지정할 때는 0~254를 사용할 수 있다.   
+동적으로 할당되는 마이너 번호는 256부터 시작하며, 총 1,048,320개가 존재한다.
+
 리눅스에서 장치는 메이저 번호와 마이너 번호로 구분된다.   
 메이저 번호는 드라이버 자체를 식별하고, 마이너 번호는 해당 드라이버가 관리하는 개별 장치를 구분한다.   
-
 결국 각 장치는 MAJOR:MINOR 형태의 고유한 번호로 식별된다.
 
 #### misc_register()와 misc_deregister()
@@ -347,8 +350,7 @@ Misc 드라이버는 문자 디바이스의 일종이지만,
 커널이 /dev 디렉터리에 장치 파일을 자동으로 생성한다.   
 언로드 시에는 misc_deregister(struct miscdevice *)를 호출하여 장치 파일을 제거한다.   
 
-이 구조체에는 read, write 등 사용자 공간의 시스템 콜과 연결되는   
-함수 포인터가 포함되어 있다.   
+이 구조체에는 read, write 등 사용자 공간의 시스템 콜과 연결되는 함수 포인터가 포함되어 있다.   
 즉, 사용자가 /dev/fortytwo를 open(), read(), write()하면   
 해당 함수 포인터에 등록된 드라이버 코드가 실행된다.
 
@@ -373,6 +375,44 @@ copy_to_user()와 copy_from_user()는 이 외에도 다양한 보호 장치를 �
 스펙터와 같은 투기적 실행 취약점을 방지하기 위한 메모리 펜스 코드도 포함되어 있다.   
 이런 이유로 커널에서 유저 공간에 접근할 때는 반드시 이 함수들을 사용해야 한다.
 
+#### read() 구현
+read() 함수는 사용자에게 학생 로그인 문자열을 반환해야 한다.   
+이를 직접 copy_to_user()로 구현할 수도 있지만, 커널에는 이미 이 작업을 단순화한    
+simple_read_from_buffer()라는 헬퍼 함수가 존재한다.  
+
+이 함수는 내부적으로 copy_to_user()를 호출하고,   
+파일 오프셋을 자동으로 관리해주기 때문에 직접 구현하는 것보다 훨씬 편하다.   
+따라서 본 과제에서는 simple_read_from_buffer()를 사용하여   
+유저 공간으로 로그인 문자열을 전달하도록 구현하였다.
+
+#### write() 구현
+write()는 사용자로부터 입력받은 문자열이 로그인 문자열과 일치하는지 검사한다.   
+커널에는 simple_write_to_buffer()라는 유사한 함수가 존재하지만,   
+write()의 경우에는 read()처럼 파일 오프셋을 관리할 필요가 없고   
+단순히 입력값이 로그인과 일치하는지만 확인하면 되므로 직접 구현하였다.
+
+입력된 값이 로그인 문자열과 다를 경우, -EINVAL을 반환하도록 하였다.   
+이 반환값은 사용자 공간의 glibc syscall wrapper가 받아서   
+errno 변수에 EINVAL로 저장된다.   
+즉, 유저 레벨에서 write()가 실패하면 echo 등 쉘 명령이   
+“Invalid argument”라는 메시지를 출력하게 된다.
+
+#### 테스트 방법
+모듈을 정상적으로 빌드하고 로드한 뒤 다음 명령으로 테스트할 수 있다.   
+- read 테스트
+
+  ```bash
+  cat /dev/fortytwo
+  ```
+  → 자신의 로그인 문자열이 출력되어야 한다.
+- write 테스트
+
+  ```bash
+  echo -n "<login>" > /dev/fortytwo
+  ```
+  → 입력이 일치하면 정상 종료,
+    입력이 다르면 echo가 “Invalid argument”를 출력한다.
+  
 #### 참고 자료
 - [Linux Device Driver Tutorial Part 4 – Character Device Driver](https://embetronicx.com/tutorials/linux/device-drivers/character-device-driver-major-number-and-minor-number/)
 - [Misc Device Driver – Linux Device Driver Tutorial Part 32](https://embetronicx.com/tutorials/linux/device-drivers/misc-device-driver/)
