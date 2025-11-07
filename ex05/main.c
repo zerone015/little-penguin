@@ -20,7 +20,7 @@ static ssize_t ft_read(struct file *file, char __user *buf,
 	return simple_read_from_buffer(buf, count, ppos, login, login_len);
 }
 
-static ssize_t ft_write(struct file *filp, const char __user *buf,
+static ssize_t ft_write(struct file *file, const char __user *buf,
                               size_t count, loff_t *ppos)
 {
 	char kbuf[login_len];
