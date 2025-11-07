@@ -123,7 +123,6 @@ pr_info(), pr_warn() 등의 매크로도 존재하지만 비교적 최근에 도
 
 #### 참고 자료
 - [The Linux Kernel Module Programming Guide](https://sysprog21.github.io/lkmpg/)
-- linux kernel source tree  
  
  ## ex02
 이 단계의 목표는 커널 버전 문자열이 구성되는 방식을 이해하고,   
@@ -161,7 +160,7 @@ git format-patch -1
 ```
 
 ## ex03
-이 단계의 목표는 리눅스 커널 코딩 스타일을 숙지하고, 실제 커널 코드에 적용해보는 것이다.
+이 단계의 목표는 리눅스 커널 코딩 스타일을 숙지하고, 코드에 적용해보는 것이다.
 
 #### 요구 사항
 아래의 주어진 C 파일을 리눅스 코딩 규칙에 맞게 수정해야 한다.
@@ -287,7 +286,7 @@ insmod는 지정한 .ko 파일을 직접 커널에 적재한다.
 필요한 의존 모듈도 함께 로드한다.
 
 커널은 장치를 감지하면 해당 장치 정보를 기반으로 MODALIAS 문자열을 생성하여 uevent에 포함한다.   
-기본 udev 규칙이 적용되는 경우, udev는 이를 받아 다음과 같이 모듈을 자동 로드한다.
+기본 udev 규칙이 적용되는 경우, udev는 이를 받아 다음과 같이 모듈을 로드한다.
 ```bash
 modprobe $MODALIAS
 ```
@@ -307,3 +306,75 @@ depmod -a 이후 /lib/modules/.../modules.alias에 alias가 반영된다.
 - [Hotplugging with udev](https://bootlin.com/doc/legacy/udev/udev.pdf)
 - [Overview of Device and Module Handling](https://www.linuxfromscratch.org/lfs/view/stable/chapter09/udev.html)
 - [Linux Device Drivers, 3rd Edition, Chapter 14](https://lwn.net/Kernel/LDD3/)
+
+## ex05
+이번 과제의 목표는 misc 디바이스 드라이버를 작성하고,   
+드라이버가 사용자 공간과 데이터를 주고받는 방식을 이해하는 것이다.
+
+#### 요구 사항
+ex01에서 작성한 커널 모듈을 수정하여 misc 디바이스 드라이버로 만든다.
+- 동적 마이너 번호를 사용해야 한다.
+- 디바이스 노드 경로는 /dev/fortytwo여야 한다.
+- read()는 사용자에게 학생 로그인 문자열을 반환한다.
+- write()는 입력값이 로그인 문자열과 일치하는지 확인하여,   
+  일치하면 정상 반환, 일치하지 않으면 "invalid value" 오류를 반환해야 한다.
+- 모듈이 로드될 때 장치를 등록하고, 언로드 시 해제해야 한다.
+
+#### 제출물
+- 소스 코드
+
+#### 구현 내용
+리눅스 커널의 장치 드라이버는 하드웨어 장치를 제어하기 위한 인터페이스로,   
+데이터 처리 방식에 따라 세 가지로 나뉜다.
+
+| 구분 | 데이터 단위 | 접근 방식 | 대표 장치 | 비고 |
+|------|--------------|------------|-------------|------|
+| 문자 드라이버 | 바이트 단위 | 순차 접근 | 키보드, 마우스, 콘솔 등 | /dev/tty, /dev/null 등 |
+| 블록 드라이버 | 블록 단위 | 임의 접근 | 하드디스크, SSD 등 | /dev/sda, /dev/loop0 등 |
+| 네트워크 드라이버 | 프레임 단위 | 패킷 기반 | NIC, 무선랜 카드 등 | eth0, wlan0 등 |
+
+Misc 드라이버는 문자 디바이스의 일종이지만,   
+메이저 번호가 항상 10번으로 고정되어 있고 등록 절차가 간단하다는 점이 특징이다.   
+테스트용이나 단순한 장치를 빠르게 구현할 때 자주 사용된다.
+
+리눅스에서 장치는 메이저 번호와 마이너 번호로 구분된다.   
+메이저 번호는 드라이버 자체를 식별하고, 마이너 번호는 해당 드라이버가 관리하는 개별 장치를 구분한다.   
+
+결국 각 장치는 MAJOR:MINOR 형태의 고유한 번호로 식별된다.
+
+#### misc_register()와 misc_deregister()
+드라이버 초기화 함수에서 misc_register(struct miscdevice *)를 호출하면   
+커널이 /dev 디렉터리에 장치 파일을 자동으로 생성한다.   
+언로드 시에는 misc_deregister(struct miscdevice *)를 호출하여 장치 파일을 제거한다.   
+
+이 구조체에는 read, write 등 사용자 공간의 시스템 콜과 연결되는   
+함수 포인터가 포함되어 있다.   
+즉, 사용자가 /dev/fortytwo를 open(), read(), write()하면   
+해당 함수 포인터에 등록된 드라이버 코드가 실행된다.
+
+#### copy_to_user()와 copy_from_user()
+드라이버에서 사용자 공간 포인터에 직접 접근하는 것은 금지되어 있다.   
+사용자 프로그램이 잘못된 주소를 전달하면 유저 모드에서는 해당 프로세스만 종료되지만,    
+커널 모드에서 잘못된 주소를 참조하면 커널 패닉이 발생해 시스템 전체가 중단된다.    
+이를 방지하기 위해 커널은 copy_to_user()와 copy_from_user()라는 전용 함수를 제공한다.    
+
+이 함수들은 단순히 메모리를 복사하는 것이 아니라,    
+예외 처리를 통해 커널이 안전하게 유저 공간 메모리에 접근할 수 있도록 보장한다.    
+내부적으로는 예외 테이블을 사용하여 페이지 폴트가 발생해도 커널이 패닉을 일으키지 않도록 처리하며,    
+이를 통해 일부만 복사되는 상황도 정상적으로 처리된다.
+
+또한 이 함수들은 전달된 주소와 범위가 실제로 유저 공간에 속하는지도 검증한다.   
+사용자가 악의적으로 커널 공간 주소를 유저 버퍼인 척 전달할 수도 있기 때문이다.    
+만약 이런 검증이 없다면, 사용자는 커널 메모리를 덮어써서 시스템을 완전히 장악할 수 있다.    
+
+copy_to_user()와 copy_from_user()는 이 외에도 다양한 보호 장치를 포함하고 있다.   
+잘못된 커널 버퍼 주소나 크기에 대한 컴파일타임 경고를 발생시키고, 런타임 시에는 오류를 로깅한다.   
+또한 원자적 컨텍스트에서 잘못된 sleep 호출을 감지하고,   
+스펙터와 같은 투기적 실행 취약점을 방지하기 위한 메모리 펜스 코드도 포함되어 있다.   
+이런 이유로 커널에서 유저 공간에 접근할 때는 반드시 이 함수들을 사용해야 한다.
+
+#### 참고 자료
+- [Linux Device Driver Tutorial Part 4 – Character Device Driver](https://embetronicx.com/tutorials/linux/device-drivers/character-device-driver-major-number-and-minor-number/)
+- [Misc Device Driver – Linux Device Driver Tutorial Part 32](https://embetronicx.com/tutorials/linux/device-drivers/misc-device-driver/)
+
+## ex06
