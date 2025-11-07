@@ -347,12 +347,12 @@ miscdevice 구조체의 minor 필드에 MISC_DYNAMIC_MINOR를 지정하면 커�
 결국 각 장치는 MAJOR:MINOR 형태의 고유한 번호로 식별된다.
 
 #### misc_register()와 misc_deregister()
-드라이버 초기화 함수에서 misc_register(struct miscdevice *)를 호출하면   
-커널이 /dev 디렉터리에 장치 파일을 자동으로 생성한다.   
-언로드 시에는 misc_deregister(struct miscdevice *)를 호출하여 장치 파일을 제거한다.   
+드라이버의 초기화 함수에서 misc_register()를 호출하면 /dev 디렉터리에 해당 장치 파일이 생성된다.   
+모듈이 언로드될 때는 misc_deregister()를 호출하여 등록된 장치 파일을 제거한다.
 
-이 구조체에는 read, write 등 사용자 공간의 시스템 콜과 연결되는 함수 포인터가 포함되어 있다.   
-즉, 사용자가 /dev/fortytwo를 open(), read(), write()하면   
+miscdevice 구조체는 file_operations 구조체를 포함하고 있으며,   
+이 file_operations 구조체에는 read, write 등 사용자 공간의 시스템 콜과 연결되는 함수 포인터들이 정의되어 있다.   
+따라서 사용자가 /dev/fortytwo를 open(), read(), write() 등의 시스템 콜로 접근하면,   
 해당 함수 포인터에 등록된 드라이버 코드가 실행된다.
 
 #### copy_to_user()와 copy_from_user()
@@ -396,7 +396,7 @@ write()의 경우에는 read()처럼 파일 오프셋을 관리할 필요가 없
 
 입력된 값이 로그인 문자열과 다를 경우, -EINVAL을 반환하도록 하였다.   
 이 반환값은 사용자 공간의 glibc syscall wrapper가 받아서   
-errno 변수에 EINVAL로 저장된다.   
+errno에 EINVAL로 저장된다.   
 즉, 유저 레벨에서 write()가 실패하면 echo 등 쉘 명령이   
 “Invalid argument”라는 메시지를 출력하게 된다.
 
