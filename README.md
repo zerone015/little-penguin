@@ -160,7 +160,7 @@ git format-patch -1
 이 단계의 목표는 리눅스 커널 코딩 스타일을 숙지하고, 코드에 적용해보는 것이다.
 
 #### 요구 사항
-아래의 주어진 C 파일을 리눅스 코딩 규칙에 맞게 수정해야 한다.
+아래의 주어진 C 파일을 리눅스 코딩 스타일에 맞게 수정해야 한다.
 ```c
 #include
 #include
@@ -203,7 +203,7 @@ module_exit(my_exit);
 ```
 
 #### 제출물
-- 수정된 C 파일
+- 수정된 소스 코드
 
 #### 구현 내용
 리눅스 코딩 스타일 문서를 참고하여 코드 형식을 수정하면 된다.   
@@ -529,3 +529,94 @@ mutex는 읽기 또한 직렬화되므로 이 상황에서는 적합하지 않�
 - [DebugFS](https://docs.kernel.org/filesystems/debugfs.html)
 
 ## ex08
+이 단계의 목표는 주어진 코드를 리눅스 코딩 스타일에 맞게 수정하고,   
+논리적 오류를 바로잡는 것이다.
+
+#### 요구사항
+아래의 주어진 C 파일을 리눅스 코딩 스타일에 맞게 수정하고, 잘못된 동작도 바로 잡아야 한다.
+```c
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/miscdevice.h>
+#include <linux/fs.h>
+#include <linux/slab.h>
+
+// Dont have a license, LOL
+MODULE_LICENSE("LICENSE");
+MODULE_AUTHOR("Louis Solofrizzo <louis@ne02ptzero.me>");
+MODULE_DESCRIPTION("Useless module");
+
+static ssize_t myfd_read
+(struct file *fp, char __user *user,
+size_t size, loff_t *offs);
+static ssize_t myfd_write(struct file *fp, const char __user *user,
+size_t size, loff_t *offs);
+
+static struct file_operations myfd_fops = {
+.owner = THIS_MODULE, .read = &myfd_read, .write = &myfd_write
+};
+
+static struct miscdevice myfd_device = {
+.minor = MISC_DYNAMIC_MINOR,.name = "reverse",
+.fops = &myfd_fops };
+
+char str[PAGE_SIZE];
+char *tmp;
+
+static int __init myfd_init
+(void) {
+int retval;
+retval = misc_register(&(*(&(myfd_device))));
+return 1;
+}
+
+static void __exit myfd_cleanup
+(void) {
+}
+
+ssize_t myfd_read
+(struct file *fp,
+char __user *user,
+size_t size,
+loff_t *offs)
+{
+size_t t, i;
+char *tmp2;
+/***************
+* Malloc like a boss
+***************/
+tmp2 = kmalloc(sizeof(char) * PAGE_SIZE * 2, GFP_KERNEL);
+tmp = tmp2;
+for (t = strlen(str) - 1, i = 0; t >= 0; t--, i++) {
+tmp[i] = str[t];
+}
+tmp[i] = 0x0;
+return simple_read_from_buffer(user, size, offs, tmp, i);
+}
+
+ssize_t myfd_write
+(struct file *fp,
+const char __user *user,
+size_t size,
+loff_t *offs) {
+ssize_t res;
+res = 0;
+res = simple_write_to_buffer(str, size, offs, user, size) + 1;
+// 0x0 = ’\0’
+str[size + 1] = 0x0;
+return res;
+}
+
+module_init(myfd_init);
+module_exit(myfd_cleanup);
+```
+
+#### 제출물
+- 수정된 소스 코드
+
+#### 구현 내용
+ex03과 유사하게 코드를 리눅스 코딩 스타일에 맞게 정리하고, 논리 오류를 바로잡으면 된다.   
+모듈은 /dev/reverse를 생성하며, write()로 입력한 문자열을 read() 시 거꾸로 반환한다.
+
+## ex09
