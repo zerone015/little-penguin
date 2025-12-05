@@ -32,12 +32,12 @@ static void print_fullpath(struct seq_file *seq, struct path *path)
 static int show_mounts(struct seq_file *seq, void *v)
 {
 	struct mount *mnt, *tmp;
-	struct rb_root mounts;
+	struct rb_root *mounts;
 	struct super_block *sb;
 	struct path path;
 
-	mounts = current->nsproxy->mnt_ns->mounts;
-	rbtree_postorder_for_each_entry_safe(mnt, tmp, &mounts, mnt_node) {
+	mounts = &current->nsproxy->mnt_ns->mounts;
+	rbtree_postorder_for_each_entry_safe(mnt, tmp, mounts, mnt_node) {
 		sb = mnt->mnt.mnt_sb;
 		path.mnt = &mnt->mnt;
 		path.dentry = mnt->mnt.mnt_root;
