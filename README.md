@@ -644,49 +644,71 @@ procfs는 커널 내부 정보를 사용자 공간에 보여주기 위한 파일
 이 파일을 통해 커널 데이터를 간단히 노출할 수 있다.
 
 #### seq_file
-seq_file은 /proc 같은 가상 파일에서 긴 데이터를 출력할 때 사용하는 인터페이스이다.   
+seq_file은 /proc 같은 가상 파일에서 데이터를 출력할 때 사용하는 인터페이스이다.   
 copy_to_user()로 직접 구현하면 사용자가 여러 번에 걸쳐 파일을 읽을 때마다   
 파일 오프셋을 관리해야 해서 코드가 복잡해진다.
 
-seq_file은 이런 과정을 직접 구현하지 않아도 되도록, 내부에서 오프셋과 버퍼 관리를 자동으로 처리한다.   
+seq_file은 이런 과정을 직접 구현하지 않아도 되도록, 내부에서 오프셋과 반복 호출 처리를 자동으로 해준다.   
 show() 함수에 출력 코드를 작성하기만 하면 된다.
 
 이번 과제에서는 한 번만 출력하면 되는 단순한 형태이므로   
 single_open()을 사용해 한 번에 모든 마운트 정보를 출력하도록 했다.
 
-#### nsproxy와 마운트 정보
-현재 실행 중인 태스크의 PCB는 current 매크로를 통해 접근할 수 있다.   
+#### 마운트 정보
+현재 실행 중인 태스크의 TCB는 current 매크로를 통해 접근할 수 있다.   
 current는 현재 CPU에서 실행 중인 스레드의 task_struct 포인터를 반환한다.   
 
 task_struct에는 nsproxy라는 필드가 포함되어 있으며,   
-여기에 해당 프로세스가 소속된 다양한 네임스페이스 정보가 저장된다.
+여기에 해당 프로세스가 소속된 다양한 네임스페이스 정보가 모여 있다.
 
 그중 nsproxy->mnt_ns는 마운트 네임스페이스를 가리키며,   
-이 안에는 현재 시스템에 마운트된 모든 파일시스템 정보가 들어 있다.
+이 안에는 이 네임스페이스에서 보이는 모든 마운트 정보가 들어 있다.
 
-최신 커널에서는 마운트 정보가 연결 리스트가 아닌 레드블랙트리로 저장된다.   
-따라서 rbtree_postorder_for_each_entry_safe() 매크로를 사용하여   
-트리를 순회하면서 각 마운트 정보를 출력해야 한다.
+실제로 마운트 하나하나는 struct mount라는 내부 구조체로 표현되는데,  
+이 타입은 커널 내부 전용이라 모듈에서 쓰려면
+```c
+#include <../fs/mount.h>
+```
+처럼 소스 트리 내부 경로를 직접 include 해야 한다.   
 
-#### 마운트 구조체와 파일시스템 이름
-각 마운트 노드는 struct mount 타입이며,   
-그 안에는 해당 파일시스템의 정보를 담은 struct super_block이 포함되어 있다.   
-이 구조체의 s_id 필드에는 파일시스템 이름이 저장되어 있어,   
-이를 그대로 출력하면 된다.
+또한 최신 커널에서 마운트 정보는 레드블랙 트리로 관리되며,   
+다른 스레드에서 동시에 mount, umount를 호출할 수 있기 때문에   
+커널 내부에서는 이 트리를 namespace_sem이라는 struct rw_semaphore로 보호한다.
 
-또한 struct mount 안에는 struct vfsmount가 포함되어 있으며,   
-이 안에는 마운트된 루트 디렉터리와 관련된 정보가 담겨 있다.
+문제는 이 namespace_sem이 fs/namespace.c 안에   
+```c
+static DECLARE_RWSEM(namespace_sem);
+```
+형태로 선언되어 있다는 점이다.   
+즉, 모듈에서는 이 락에 정상적인 방법으로 접근할 수 없고,   
+그 결과 마운트 rbtree를 순회할 때  레이스가 발생할 가능성이 있다.
+
+실제 커널의 /proc/<pid>/mounts, /proc/<pid>/mountinfo 구현은   
+fs/proc_namespace.c 안에서 이 namespace_sem을 제대로 잡고   
+마운트 트리를 안전하게 순회한다.   
+이번 과제의 /proc/mymounts 모듈은 out-of-tree 모듈이라는 한계 때문에,   
+레이스를 피할 수는 없다는 점을 감안해야 한다.   
 
 #### d_path()를 이용한 경로 얻기
+
 커널 내부에서 경로는 struct vfsmount와 struct dentry의 조합으로 표현된다.   
-이 두 값을 struct path에 담고 d_path() 함수를 호출하면,   
-해당 마운트 지점의 전체 경로를 문자열 형태로 얻을 수 있다.
+이 둘을 함께 담기 위해 struct path라는 구조체가 사용된다.   
+dentry만으로는 경로를 온전히 표현할 수 없는데,   
+하나의 파일시스템 디렉터리 트리가 여러 마운트 포인트에 연결될 수 있기 때문이다.
+
+struct mount에는 해당 마운트의 마운트포인트,  
+root dentry, struct vfsmount, 마운트된 파일시스템의 슈퍼블록 등이 들어 있다.  
+이걸 이용해서 출력에 쓸 전체 경로를 만들어야 한다.
+
+전체 경로 문자열을 직접 만들려면   
+마운트 트리와 dentry 트리를 bottom-up으로 타고 올라가야 하는데,   
+커널에는 이를 대신해 주는 d_path() 헬퍼 함수가 이미 있다.
+
+이 함수는 인자로 전달된 struct path를 시작점으로 위로 타고 올라가면서  
+해당 경로의 전체 경로 문자열을 만들어 버퍼에 채워주고,  
+그 문자열이 시작되는 위치를 포인터로 반환해준다.
 
 #### 참고 자료
 - [Linux Device Driver Tutorial Part 9 – Procfs in Linux](https://embetronicx.com/tutorials/linux/device-drivers/procfs-in-linux/#google_vignette)
-- [mount.h](https://elixir.bootlin.com/linux/v6.18-rc5/source/fs/mount.h)
-- [The Linux Kernel Data Structure Journey — “struct nsproxy”](https://medium.com/@boutnaru/the-linux-kernel-data-structure-journey-struct-nsproxy-b032c71715c5)
 - [The seq_file Interface](https://docs.kernel.org/filesystems/seq_file.html)
-- [rbtree.h](https://elixir.bootlin.com/linux/v6.18-rc5/source/include/linux/rbtree.h#L82)
 - [Pathname lookup](https://docs.kernel.org/filesystems/path-lookup.html#introduction-to-pathname-lookup)
-- [d_path.c](https://elixir.bootlin.com/linux/v6.18-rc5/source/fs/d_path.c#L249)
